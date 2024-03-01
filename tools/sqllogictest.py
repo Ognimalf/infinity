@@ -1,6 +1,7 @@
 import argparse
 import itertools
 import os
+import signal
 import sys
 import threading
 import time
@@ -113,6 +114,7 @@ if __name__ == "__main__":
 
     current_path = os.getcwd()
 
+    infinity_dir = current_path + "/build/src/infinity"
     test_dir = current_path + "/test/sql"
     data_dir = current_path + "/test/data"
     copy_dir = "/tmp/infinity/test_data"
@@ -186,6 +188,10 @@ if __name__ == "__main__":
         copy_all(args.data, args.copy)
     else:
         copy_all(args.data, args.copy)
+
+        # with open("./tmp.txt", "w") as f:
+        #    infinity = subprocess.Popen(infinity_dir, stdout=f)
+
         print("Start testing...")
         start = time.time()
         try:
@@ -197,3 +203,13 @@ if __name__ == "__main__":
         end = time.time()
         print("Test finished.")
         print("Time cost: {}s".format(end - start))
+
+
+        # os.kill(infinity.pid, signal.SIGINT)
+        # if infinity.poll() != 0:
+        #     e = Exception(f"An error occurred: {infinity.poll()}")
+        #     print(e)
+        #     sys.exit(-1)
+        # else:
+        #     print("Test finished.")
+        #     print("Time cost: {}s".format(end - start))
