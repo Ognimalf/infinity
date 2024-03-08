@@ -102,6 +102,7 @@ class CatalogDeltaEntry;
 export struct Catalog {
 public:
     explicit Catalog(SharedPtr<String> dir);
+    virtual ~Catalog() = default;
 
     void SetTxnMgr(TxnManager *txn_mgr);
 
@@ -211,7 +212,7 @@ public:
 
     void SaveAsFile(const String &catalog_path, TxnTimeStamp max_commit_ts);
 
-    bool FlushGlobalCatalogDeltaEntry(const String &delta_catalog_path, TxnTimeStamp max_commit_ts, bool is_full_checkpoint);
+    virtual bool FlushGlobalCatalogDeltaEntry(const String &delta_catalog_path, TxnTimeStamp max_commit_ts, bool is_full_checkpoint);
 
     static void Deserialize(const nlohmann::json &catalog_json, BufferManager *buffer_mgr, UniquePtr<Catalog> &catalog);
 
@@ -250,7 +251,7 @@ public:
 
     TxnManager *txn_mgr_{nullptr};
 
-private: // TODO: remove this
+protected: // TODO: remove this
     std::shared_mutex &rw_locker() { return db_meta_map_.rw_locker_; }
 
     HashMap<String, UniquePtr<DBMeta>> &db_meta_map() { return db_meta_map_.meta_map_; };

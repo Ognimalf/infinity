@@ -31,6 +31,8 @@ export class Storage {
 public:
     explicit Storage(const Config *config_ptr);
 
+    virtual ~Storage() {};
+
     [[nodiscard]] inline Catalog *catalog() noexcept { return new_catalog_.get(); }
 
     [[nodiscard]] inline BufferManager *buffer_manager() noexcept { return buffer_mgr_.get(); }
@@ -41,15 +43,15 @@ public:
 
     [[nodiscard]] inline BGTaskProcessor *bg_processor() const noexcept { return bg_processor_.get(); }
 
-    void Init();
+    virtual void Init();
 
-    void UnInit();
+    virtual void UnInit();
 
-    void AttachCatalog(const Vector<String> &catalog_files);
+    virtual void AttachCatalog(const Vector<String> &catalog_files);
 
-    void InitNewCatalog();
+    virtual void InitNewCatalog();
 
-private:
+protected:
     const Config *config_ptr_{};
     UniquePtr<Catalog> new_catalog_{};
     UniquePtr<BufferManager> buffer_mgr_{};

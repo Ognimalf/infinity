@@ -70,7 +70,7 @@ class WalReplayTest : public BaseTest {
 
 using namespace infinity;
 
-TEST_F(WalReplayTest, WalReplayDatabase) {
+TEST_F(WalReplayTest, wal_replay_database) {
     {
         infinity::GlobalResourceUsage::Init();
         std::shared_ptr<std::string> config_path = nullptr;
@@ -161,7 +161,7 @@ TEST_F(WalReplayTest, WalReplayDatabase) {
     }
 }
 
-TEST_F(WalReplayTest, WalReplayTables) {
+TEST_F(WalReplayTest, wal_replay_tables) {
 
     Vector<SharedPtr<ColumnDef>> columns;
     {
@@ -273,7 +273,7 @@ TEST_F(WalReplayTest, WalReplayTables) {
     }
 }
 
-TEST_F(WalReplayTest, WalReplayAppend) {
+TEST_F(WalReplayTest, wal_replay_append) {
     {
         infinity::GlobalResourceUsage::Init();
         std::shared_ptr<std::string> config_path = nullptr;
@@ -465,7 +465,7 @@ TEST_F(WalReplayTest, WalReplayAppend) {
     }
 }
 
-TEST_F(WalReplayTest, WalReplayImport) {
+TEST_F(WalReplayTest, wal_replay_import) {
     {
         infinity::GlobalResourceUsage::Init();
         std::shared_ptr<std::string> config_path = nullptr;
@@ -665,7 +665,7 @@ TEST_F(WalReplayTest, WalReplayImport) {
 }
 
 // FIXME: The test case diverges from the original intent.
-TEST_F(WalReplayTest, WalReplayCompact) {
+TEST_F(WalReplayTest, wal_replay_compact) {
     u64 test_segment_n = 2;
     {
         infinity::GlobalResourceUsage::Init();
@@ -789,7 +789,7 @@ TEST_F(WalReplayTest, WalReplayCompact) {
     }
 }
 
-TEST_F(WalReplayTest, WalReplayCreateIndexIvfFlat) {
+TEST_F(WalReplayTest, wal_replay_create_index_infflat) {
     {
         infinity::GlobalResourceUsage::Init();
         std::shared_ptr<std::string> config_path = nullptr;
@@ -889,7 +889,7 @@ TEST_F(WalReplayTest, WalReplayCreateIndexIvfFlat) {
     }
 }
 
-TEST_F(WalReplayTest, WalReplayCreateIndexHnsw) {
+TEST_F(WalReplayTest, wal_replay_create_index_hnsw) {
     {
         infinity::GlobalResourceUsage::Init();
         std::shared_ptr<std::string> config_path = nullptr;

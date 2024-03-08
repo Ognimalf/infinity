@@ -16,12 +16,16 @@
 
 import infinity_context;
 import infinity_exception;
+import infinity_mock;
 
 import stl;
 import global_resource_usage;
 import third_party;
 import logger;
 import table_def;
+import column_def;
+import data_type;
+import logical_type;
 import value;
 
 import data_block;
@@ -34,17 +38,17 @@ import extra_ddl_info;
 
 import base_entry;
 
+using namespace infinity;
+
 class CatalogTest : public BaseTest {
     void SetUp() override {
         BaseTest::SetUp();
         system("rm -rf /tmp/infinity/log /tmp/infinity/data /tmp/infinity/wal");
         infinity::GlobalResourceUsage::Init();
         std::shared_ptr<std::string> config_path = nullptr;
-        infinity::InfinityContext::instance().Init(config_path);
     }
 
     void TearDown() override {
-        infinity::InfinityContext::instance().UnInit();
         EXPECT_EQ(infinity::GlobalResourceUsage::GetObjectCount(), 0);
         EXPECT_EQ(infinity::GlobalResourceUsage::GetRawMemoryCount(), 0);
         infinity::GlobalResourceUsage::UnInit();
@@ -52,10 +56,71 @@ class CatalogTest : public BaseTest {
     }
 };
 
+UniquePtr<TableDef> MockTestTableDesc() {
+    // Define columns
+    Vector<SharedPtr<ColumnDef>> columns;
+    {
+        i64 column_id = 0;
+        {
+            HashSet<ConstraintType> constraints;
+            constraints.insert(ConstraintType::kUnique);
+            constraints.insert(ConstraintType::kNotNull);
+            auto column_def_ptr =
+                MakeShared<ColumnDef>(column_id++, MakeShared<DataType>(DataType(LogicalType::kTinyInt)), "tiny_int_col", constraints);
+            columns.emplace_back(column_def_ptr);
+        }
+        {
+            HashSet<ConstraintType> constraints;
+            constraints.insert(ConstraintType::kPrimaryKey);
+            auto column_def_ptr =
+                MakeShared<ColumnDef>(column_id++, MakeShared<DataType>(DataType(LogicalType::kBigInt)), "big_int_col", constraints);
+            columns.emplace_back(column_def_ptr);
+        }
+        {
+            HashSet<ConstraintType> constraints;
+            constraints.insert(ConstraintType::kNotNull);
+            auto column_def_ptr = MakeShared<ColumnDef>(column_id++, MakeShared<DataType>(DataType(LogicalType::kDouble)), "double_col", constraints);
+            columns.emplace_back(column_def_ptr);
+        }
+    }
+
+    UniquePtr<TableDef> tbl1_def = MakeUnique<TableDef>(MakeShared<String>("default"), MakeShared<String>("tbl1"), columns);
+    return MakeUnique<TableDef>(MakeShared<String>("crash"), MakeShared<String>("tbl1"), columns);
+}
+
+SharedPtr<DataBlock> MockDataBlock() {
+    SharedPtr<DataBlock> data_block = MakeShared<DataBlock>();
+
+    Vector<SharedPtr<DataType>> column_types;
+    column_types.emplace_back(MakeShared<DataType>(LogicalType::kTinyInt));
+    column_types.emplace_back(MakeShared<DataType>(LogicalType::kBigInt));
+    column_types.emplace_back(MakeShared<DataType>(LogicalType::kDouble));
+
+    SizeT row_count = DEFAULT_VECTOR_SIZE;
+    data_block->Init(column_types, row_count);
+
+    for (SizeT i = 0; i < row_count; ++i) {
+        data_block->AppendValue(0, Value::MakeTinyInt(static_cast<i8>(i)));
+    }
+
+    for (SizeT i = 0; i < row_count; ++i) {
+        data_block->AppendValue(1, Value::MakeBigInt(static_cast<i64>(i)));
+    }
+
+    for (SizeT i = 0; i < row_count; ++i) {
+        data_block->AppendValue(2, Value::MakeDouble(static_cast<f64>(i)));
+    }
+
+    data_block->Finalize();
+
+    return data_block;
+}
+
 // txn1: create db1, get db1, delete db1, get db1, commit
 // txn2:             get db1,             get db1, commit
 TEST_F(CatalogTest, simple_test1) {
     using namespace infinity;
+    infinity::InfinityContext::instance().Init(config_path);
 
     TxnManager *txn_mgr = infinity::InfinityContext::instance().storage()->txn_manager();
     Catalog *catalog = infinity::InfinityContext::instance().storage()->catalog();
@@ -108,6 +173,7 @@ TEST_F(CatalogTest, simple_test1) {
 
     txn_mgr->CommitTxn(txn1);
     txn_mgr->CommitTxn(txn2);
+    infinity::InfinityContext::instance().UnInit();
 }
 
 // txn1: create db1, commit.
@@ -115,6 +181,7 @@ TEST_F(CatalogTest, simple_test1) {
 // txn3:                     start, get db1, delete db1, commit
 TEST_F(CatalogTest, simple_test2) {
     using namespace infinity;
+    infinity::InfinityContext::instance().Init(config_path);
 
     TxnManager *txn_mgr = infinity::InfinityContext::instance().storage()->txn_manager();
     Catalog *catalog = infinity::InfinityContext::instance().storage()->catalog();
@@ -164,10 +231,12 @@ TEST_F(CatalogTest, simple_test2) {
     }
 
     txn_mgr->CommitTxn(txn3);
+    infinity::InfinityContext::instance().UnInit();
 }
 
 TEST_F(CatalogTest, concurrent_test) {
     using namespace infinity;
+    infinity::InfinityContext::instance().Init(config_path);
 
     TxnManager *txn_mgr = infinity::InfinityContext::instance().storage()->txn_manager();
     Catalog *catalog = infinity::InfinityContext::instance().storage()->catalog();
@@ -253,4 +322,64 @@ TEST_F(CatalogTest, concurrent_test) {
             EXPECT_TRUE(!status.ok());
         }
     }
+    infinity::InfinityContext::instance().UnInit();
 }
+
+TEST_F(CatalogTest, crash_test_block_flush) {
+    if (true) return;
+    using namespace infinity;
+    std::shared_ptr<std::string> config_path = nullptr;
+    MockInfinityContext::instance().Init(config_path, false, false, true, false);
+
+    TxnManager *txn_mgr = MockInfinityContext::instance().storage()->txn_manager();
+
+    // initialize catalog
+    {
+        auto *txn = txn_mgr->CreateTxn();
+        txn->Begin();
+        auto [database_entry, db_status] = txn->CreateDatabase("crash", infinity::ConflictType::kIgnore);
+        auto [table_entry, table_status] = txn->CreateTable("crash", MockTestTableDesc(), infinity::ConflictType::kIgnore);
+        txn_mgr->CommitTxn(txn);
+    }
+
+    // write block
+    {
+        auto *txn = txn_mgr->CreateTxn();
+        auto data_block = MockDataBlock();
+
+        txn->Begin();
+        txn->Append("crash", "tbl1", data_block);
+
+        txn_mgr->CommitTxn(txn);
+        MockInfinityContext::instance().UnInit();
+    }
+
+    // restart
+    {
+        MockInfinityContext::instance().Init(config_path, false, false, true, false);
+        auto *txn = txn_mgr->CreateTxn();
+        txn->Begin();
+
+        auto [db_entry, db_status] = txn->GetDatabase("crash");
+        EXPECT_TRUE(db_status.ok());
+        EXPECT_NE(db_entry, nullptr);
+
+        auto [table_entry, table_status] = txn->GetTableEntry("crash", "tbl1");
+        EXPECT_TRUE(table_status.ok());
+        EXPECT_NE(table_entry, nullptr);
+
+        auto segment_entry = table_entry->GetSegmentByID(0, txn->BeginTS());
+        EXPECT_EQ(segment_entry, nullptr);
+
+        txn_mgr->CommitTxn(txn);
+    }
+    MockInfinityContext::instance().UnInit();
+}
+
+// TEST_F(CatalogTest, crash_test_catalog_full_flush) {
+//  TODO:
+// }
+
+// TEST_F(CatalogTest, crash_test_gc_wal) {
+//  TODO:
+// }

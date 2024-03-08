@@ -35,7 +35,7 @@ public:
                u64 delta_checkpoint_interval_sec,
                u64 delta_checkpoint_interval_wal_bytes);
 
-    ~WalManager();
+    virtual ~WalManager();
 
     void Start();
 
@@ -61,7 +61,7 @@ public:
 
     void SwapWalFile(TxnTimeStamp max_commit_ts);
 
-    i64 ReplayWalFile();
+    virtual i64 ReplayWalFile();
 
     void ReplayWalEntry(const WalEntry &entry);
 
@@ -93,7 +93,7 @@ public:
     u64 cfg_delta_checkpoint_interval_sec_{};
     u64 cfg_delta_checkpoint_interval_wal_bytes_{};
 
-private:
+protected:
     // Concurrent writing WAL is disallowed. So put all WAL writing into a queue
     // and do serial writing.
     String wal_path_{};

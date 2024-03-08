@@ -302,7 +302,7 @@ file(GLOB_RECURSE
 file(GLOB_RECURSE
         ut_dependent_cppm
         CONFIGURE_DEPENDS
-        unit_test/test_helper/sql_runner.cppm
+        unit_test/test_helper/*.cppm
 )
 
 add_executable(unit_test

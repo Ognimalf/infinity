@@ -15,6 +15,7 @@
 #pragma once
 
 #include "../../third_party/googletest/googletest/include/gtest/gtest.h"
+#include "../../third_party/googletest/googlemock/include/gmock/gmock.h"
 #include <type_traits>
 
 template <typename T>

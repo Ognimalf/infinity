@@ -127,3 +127,15 @@ TEST_F(CatalogDeltaEntryTest, MergeEntries) {
     EXPECT_EQ(global_catalog_delta_entry->txn_id(), 1u);
     EXPECT_EQ(global_catalog_delta_entry->commit_ts(), 1u);
 }
+
+// TEST_F(CatalogTest, crash_test_block_flush) {
+
+// }
+
+// TEST_F(CatalogTest, crash_test_catalog_delta_flush) {
+
+// }
+
+// TEST_F(CatalogTest, crash_test_gc_wal) {
+    
+// }

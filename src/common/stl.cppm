@@ -39,6 +39,7 @@ module;
 #include <shared_mutex>
 #include <sstream>
 #include <string>
+#include <stdexcept>
 #include <thread>
 #include <type_traits>
 #include <typeinfo>
@@ -99,6 +100,7 @@ export namespace std {
     using std::scoped_lock;
 
     using std::binary_search;
+    using std::bind;
     using std::fabs;
     using std::fill_n;
     using std::find;
@@ -204,6 +206,8 @@ export namespace std {
     using std::function;
     using std::monostate;
     using std::thread;
+
+    using namespace std::placeholders;
 } // namespace std
 
 namespace infinity {

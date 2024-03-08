@@ -115,6 +115,8 @@ public:
     TxnTimeStamp begin_ts_{0};
     TransactionID txn_id_{0};
     TxnTimeStamp commit_ts_{0};
+
+    // TODO: remove and use enum
     bool is_delete_{false};
 
 public:

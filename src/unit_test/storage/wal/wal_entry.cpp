@@ -179,7 +179,7 @@ void MockWalFile(const String &wal_file_path = "/tmp/infinity/wal/wal.log") {
     }
 }
 
-TEST_F(WalEntryTest, ReadWrite) {
+TEST_F(WalEntryTest, read_write) {
     SharedPtr<WalEntry> entry = MakeShared<WalEntry>();
     entry->cmds_.push_back(MakeShared<WalCmdCreateDatabase>("db1"));
     entry->cmds_.push_back(MakeShared<WalCmdDropDatabase>("db1"));
@@ -239,7 +239,7 @@ TEST_F(WalEntryTest, ReadWrite) {
 
 void Println(const String &message1, const String &message2) { std::cout << message1 << message2 << std::endl; }
 
-TEST_F(WalEntryTest, WalEntryIterator) {
+TEST_F(WalEntryTest, wal_entry_iterator) {
     using namespace infinity;
     MockWalFile();
     String wal_file_path = "/tmp/infinity/wal/wal.log";
@@ -305,7 +305,7 @@ TEST_F(WalEntryTest, WalEntryIterator) {
     EXPECT_EQ(replay_entries.size(), 1u);
 }
 
-TEST_F(WalEntryTest, WalListIterator) {
+TEST_F(WalEntryTest, wal_list_iterator) {
     using namespace infinity;
     MockWalFile();
     MockWalFile("/tmp/infinity/wal/wal2.log");
