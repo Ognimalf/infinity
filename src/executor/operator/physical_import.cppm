@@ -69,9 +69,10 @@ public:
                             bool header,
                             char delimiter,
                             CopyFileType type,
+                            SizeT task_count,
                             SharedPtr<Vector<LoadMeta>> load_metas)
         : PhysicalOperator(PhysicalOperatorType::kImport, nullptr, nullptr, id, load_metas), table_entry_(table_entry), file_type_(type),
-          file_path_(std::move(file_path)), header_(header), delimiter_(delimiter) {}
+          file_path_(std::move(file_path)), header_(header), delimiter_(delimiter), task_count_(task_count) {}
 
     ~PhysicalImport() override = default;
 
@@ -108,6 +109,8 @@ public:
 
     inline char delimiter() const { return delimiter_; }
 
+    inline SizeT task_count() const { return task_count_; }
+
     static void SaveSegmentData(TableEntry *table_entry, Txn *txn, SharedPtr<SegmentEntry> segment_entry);
 
 private:
@@ -126,6 +129,7 @@ private:
     String file_path_{};
     bool header_{false};
     char delimiter_{','};
+    SizeT task_count_{0};
 };
 
 } // namespace infinity

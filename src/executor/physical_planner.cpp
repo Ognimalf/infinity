@@ -506,6 +506,7 @@ UniquePtr<PhysicalOperator> PhysicalPlanner::BuildImport(const SharedPtr<Logical
                                       logical_import->header(),
                                       logical_import->delimiter(),
                                       logical_import->FileType(),
+                                      logical_import->segment_count(),
                                       logical_operator->load_metas());
 }
 

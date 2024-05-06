@@ -36,9 +36,10 @@ public:
                                   String file_path,
                                   bool header,
                                   char delimiter,
-                                  CopyFileType type)
+                                  CopyFileType type,
+                                  SizeT segment_count)
         : LogicalNode(node_id, LogicalNodeType::kImport), table_entry_(table_entry), file_type_(type),
-          file_path_(std::move(file_path)), header_(header), delimiter_(delimiter) {}
+          file_path_(std::move(file_path)), header_(header), delimiter_(delimiter), segment_count_(segment_count) {}
 
     [[nodiscard]] Vector<ColumnBinding> GetColumnBindings() const final;
 
@@ -62,12 +63,15 @@ public:
 
     [[nodiscard]] char delimiter() const { return delimiter_; }
 
+    [[nodiscard]] SizeT segment_count() const { return segment_count_; }
+
 private:
     TableEntry *table_entry_{};
     CopyFileType file_type_{CopyFileType::kCSV};
     String file_path_{};
     bool header_{false};
     char delimiter_{','};
+    SizeT segment_count_{0};
 };
 
 } // namespace infinity

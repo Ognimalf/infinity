@@ -15,6 +15,7 @@
 module;
 
 #include <cassert>
+#include <cstring>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -23,6 +24,11 @@ module logical_planner;
 
 import stl;
 import bind_context;
+import defer_op;
+import file_system;
+import file_system_type;
+import statement_common;
+import zsv;
 
 import infinity_exception;
 import query_binder;
@@ -885,12 +891,104 @@ Status LogicalPlanner::BuildImport(const CopyStatement *statement, SharedPtr<Bin
         RecoverableError(Status::FileNotFound(statement->file_path_));
     }
 
+    UniquePtr<FileHandler> file_handler = fs.OpenFile(statement->file_path_, FileFlags::READ_FLAG, FileLockType::kReadLock);
+    SizeT file_size = fs.GetFileSize(*file_handler);
+    DeferFn defer_fn([&]() { fs.Close(*file_handler); });
+
+    SizeT row_count = 0;
+    switch (statement->copy_file_type_) {
+        case CopyFileType::kCSV: {
+            FILE *fp = fopen(statement->file_path_.c_str(), "rb");
+            if (!fp) {
+                UnrecoverableError(strerror(errno));
+            }
+            auto opts = MakeUnique<ZsvOpts>();
+            if (statement->header_) {
+                opts->row_handler = [&](void *){};
+            } else {
+                opts->row_handler = [&](void *){ ++row_count; };
+            }
+            opts->delimiter = statement->delimiter_;
+            opts->stream = fp;
+            opts->buffsize = (1 << 20);
+
+            auto parser = ZsvParser(opts.get());
+
+            ZsvStatus csv_parser_status;
+            while ((csv_parser_status = parser.ParseMore()) == zsv_status_ok) {
+                ;
+            }
+            parser.Finish();
+            fclose(fp);
+            break;
+        }
+        case CopyFileType::kJSON: {
+            String jsonl_str(file_size + 1, 0);
+            SizeT read_n = file_handler->Read(jsonl_str.data(), file_size);
+            if (read_n != file_size) {
+                UnrecoverableError(fmt::format("Read file size {} doesn't match with file size {}.", read_n, file_size));
+            }
+            if (read_n == 0) {
+                break;
+            }
+            nlohmann::json json_arr;
+            json_arr = nlohmann::json::parse(jsonl_str);
+            if (!json_arr.is_array()) {
+                break;
+            }            
+            row_count = json_arr.size();
+            break;
+        }
+        case CopyFileType::kJSONL: {
+            String jsonl_str(file_size + 1, 0);
+            SizeT read_n = file_handler->Read(jsonl_str.data(), file_size);
+            if (read_n != file_size) {
+                UnrecoverableError(fmt::format("Read file size {} doesn't match with file size {}.", read_n, file_size));
+            }
+            if (read_n == 0) {
+                break;
+            }
+            SizeT start_pos = 0;
+            SizeT end_pos = 0;
+            while (true) {
+                if (start_pos >= read_n) {
+                    break;
+                }
+                end_pos = jsonl_str.find('\n', start_pos);
+                if (end_pos == String::npos) {
+                    end_pos = file_size;
+                }
+                start_pos = end_pos + 1;
+                ++row_count;
+            }
+            break;
+        }
+        case CopyFileType::kFVECS: {
+            int dimension = 0;
+            i64 nbytes = fs.Read(*file_handler, &dimension, sizeof(dimension));
+            fs.Seek(*file_handler, 0);
+            if (nbytes == 0) {
+                break;
+            }
+            if (nbytes != sizeof(dimension)) {
+                RecoverableError(Status::ImportFileFormatError(fmt::format("Read dimension which length isn't {}.", nbytes)));
+            }
+            SizeT row_size = dimension * sizeof(FloatT) + sizeof(dimension);
+            row_count = file_size / row_size;
+            break;
+        }
+        case CopyFileType::kInvalid: {
+            UnrecoverableError("Invalid file type");
+        }
+    }
+
     SharedPtr<LogicalNode> logical_import = MakeShared<LogicalImport>(bind_context_ptr->GetNewLogicalNodeId(),
                                                                       table_entry,
                                                                       statement->file_path_,
                                                                       statement->header_,
                                                                       statement->delimiter_,
-                                                                      statement->copy_file_type_);
+                                                                      statement->copy_file_type_,
+                                                                      row_count / DEFAULT_SEGMENT_CAPACITY + 1);
 
     this->logical_plan_ = logical_import;
     return Status::OK();
