@@ -75,6 +75,28 @@ public:
 #else
             SIMDFunc = F32IPBF;
 #endif
+        } else if constexpr (std::is_same<DataType, i8>()) {
+#if defined(USE_AVX512)
+            if (dim % 64 == 0) {
+                SIMDFunc = I8IPAVX512;
+            } else {
+                SIMDFunc = I8IPAVX512Residual;
+            }
+#elif defined(USE_AVX)
+            if (dim % 16 == 0) {
+                SIMDFunc = I8IPAVX;
+            } else {
+                SIMDFunc = I8IPAVXResidual;
+            }
+#elif defined(USE_SSE)
+            if (dim % 16 == 0) {
+                SIMDFunc = I8IPSSE;
+            } else {
+                SIMDFunc = I8IPSSEResidual;
+            }
+#else
+            SIMDFunc = I8L2BF;
+#endif
         }
     }
 

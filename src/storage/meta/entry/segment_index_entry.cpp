@@ -300,6 +300,13 @@ void SegmentIndexEntry::MemIndexInsert(SharedPtr<BlockEntry> block_entry,
             BlockColumnEntry *block_column_entry = block_entry->GetColumnBlockEntry(column_id);
             SizeT row_cnt = 0;
             switch (embedding_info->Type()) {
+                case kElemInt8: {
+                    AbstractHnsw<i8, SegmentOffset> abstract_hnsw(buffer_handle.GetDataMut(), index_hnsw);
+                    MemIndexInserterIter<i8> iter(block_offset, block_column_entry, buffer_manager, row_offset, row_count);
+                    auto [start_i, end_i] = abstract_hnsw.InsertVecs(std::move(iter));
+                    row_cnt = end_i;
+                    break;
+                }
                 case kElemFloat: {
                     AbstractHnsw<f32, SegmentOffset> abstract_hnsw(buffer_handle.GetDataMut(), index_hnsw);
                     MemIndexInserterIter<f32> iter(block_offset, block_column_entry, buffer_manager, row_offset, row_count);
@@ -532,6 +539,34 @@ void SegmentIndexEntry::PopulateEntirely(const SegmentEntry *segment_entry, Txn 
             BufferHandle buffer_handle = chunk_index_entry->GetIndex();
 
             switch (embedding_info->Type()) {
+                case kElemInt8: {
+                    AbstractHnsw<i8, SegmentOffset> abstract_hnsw(buffer_handle.GetDataMut(), index_hnsw);
+                    auto InsertHnswInner = [&](auto &iter) {
+                        HnswInsertConfig insert_config;
+                        insert_config.optimize_ = true;
+                        SegmentOffset start_i, end_i;
+                        if (!config.prepare_) {
+                            // Single thread insert
+                            std::tie(start_i, end_i) = abstract_hnsw.InsertVecs(std::move(iter), insert_config);
+                        } else {
+                            // Multi thread insert data, write file in the physical create index finish stage.
+                            std::tie(start_i, end_i) = abstract_hnsw.StoreData(std::move(iter), insert_config);
+                        }
+                        LOG_TRACE(fmt::format("Insert index: {} - {}", start_i, end_i));
+                        return end_i - start_i;
+                    };
+                    SegmentOffset row_count = 0;
+                    if (config.check_ts_) {
+                        OneColumnIterator<i8> iter(segment_entry, buffer_mgr, column_def->id(), begin_ts);
+                        row_count = InsertHnswInner(iter);
+                    } else {
+                        // Not check ts in uncommitted segment when compact segment
+                        OneColumnIterator<i8, false> iter(segment_entry, buffer_mgr, column_def->id(), begin_ts);
+                        row_count = InsertHnswInner(iter);
+                    }
+                    chunk_index_entry->SetRowCount(row_count);
+                    break;
+                }
                 case kElemFloat: {
                     AbstractHnsw<f32, SegmentOffset> abstract_hnsw(buffer_handle.GetDataMut(), index_hnsw);
                     auto InsertHnswInner = [&](auto &iter) {
@@ -730,6 +765,17 @@ Status SegmentIndexEntry::CreateIndexDo(atomic_u64 &create_index_idx) {
                 BufferHandle buffer_handle = chunk_index_entry->GetIndex();
 
                 switch (embedding_info->Type()) {
+                    case kElemInt8: {
+                        AbstractHnsw<i8, SegmentOffset> abstract_hnsw(buffer_handle.GetDataMut(), index_hnsw);
+                        while (true) {
+                            SizeT idx = create_index_idx.fetch_add(1);
+                            if (idx >= row_count) {
+                                break;
+                            }
+                            abstract_hnsw.Build(offset + idx);
+                        }
+                        break;
+                    }
                     case kElemFloat: {
                         AbstractHnsw<f32, SegmentOffset> abstract_hnsw(buffer_handle.GetDataMut(), index_hnsw);
                         while (true) {
@@ -992,6 +1038,18 @@ ChunkIndexEntry *SegmentIndexEntry::RebuildChunkIndexEntries(TxnTableStore *txn_
             BufferHandle buffer_handle = merged_chunk_index_entry->GetIndex();
 
             switch (embedding_info->Type()) {
+                case kElemInt8: {
+                    AbstractHnsw<i8, SegmentOffset> abstract_hnsw(buffer_handle.GetDataMut(), index_hnsw);
+                    OneColumnIterator<i8> iter(segment_entry, buffer_mgr, column_def->id(), begin_ts);
+                    HnswInsertConfig insert_config;
+                    insert_config.optimize_ = true;
+                    auto [start_i, end_i] = abstract_hnsw.InsertVecs(std::move(iter), insert_config);
+                    if (end_i - start_i != row_count) {
+                        String error_message = "Rebuild HNSW index failed.";
+                        UnrecoverableError(error_message);
+                    }
+                    break;
+                }
                 case kElemFloat: {
                     AbstractHnsw<f32, SegmentOffset> abstract_hnsw(buffer_handle.GetDataMut(), index_hnsw);
                     OneColumnIterator<float, true /*check ts*/> iter(segment_entry, buffer_mgr, column_def->id(), begin_ts);

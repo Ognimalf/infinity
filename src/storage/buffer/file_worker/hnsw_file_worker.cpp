@@ -62,6 +62,12 @@ void HnswFileWorker::AllocateInMemory() {
     SizeT ef_c = index_hnsw->ef_construction_;
     EmbeddingDataType embedding_type = GetType();
     switch (embedding_type) {
+        case kElemInt8: {
+            AbstractHnsw<i8, SegmentOffset> abstract_hnsw(nullptr, index_hnsw);
+            abstract_hnsw.Make(chunk_size_, max_chunk_num_, dimension, M, ef_c);
+            data_ = abstract_hnsw.RawPtr();
+            break;
+        }
         case kElemFloat: {
             AbstractHnsw<f32, SegmentOffset> abstract_hnsw(nullptr, index_hnsw);
             abstract_hnsw.Make(chunk_size_, max_chunk_num_, dimension, M, ef_c);
@@ -83,6 +89,11 @@ void HnswFileWorker::FreeInMemory() {
     const IndexHnsw *index_hnsw = static_cast<const IndexHnsw *>(index_base_.get());
     EmbeddingDataType embedding_type = GetType();
     switch (embedding_type) {
+        case kElemInt8: {
+            AbstractHnsw<i8, SegmentOffset> abstract_hnsw(data_, index_hnsw);
+            abstract_hnsw.Free();
+            break;
+        }
         case kElemFloat: {
             AbstractHnsw<f32, SegmentOffset> abstract_hnsw(data_, index_hnsw);
             abstract_hnsw.Free();
@@ -104,6 +115,12 @@ void HnswFileWorker::CompressToLVQ(IndexHnsw *index_hnsw) {
     }
     EmbeddingDataType embedding_type = GetType();
     switch (embedding_type) {
+        case kElemInt8: {
+            AbstractHnsw<i8, SegmentOffset> abstract_hnsw(data_, index_hnsw);
+            abstract_hnsw.CompressToLVQ();
+            data_ = abstract_hnsw.RawPtr();
+            break;
+        }
         case kElemFloat: {
             AbstractHnsw<f32, SegmentOffset> abstract_hnsw(data_, index_hnsw);
             abstract_hnsw.CompressToLVQ();
@@ -125,6 +142,11 @@ void HnswFileWorker::WriteToFileImpl(bool to_spill, bool &prepare_success) {
     const IndexHnsw *index_hnsw = static_cast<const IndexHnsw *>(index_base_.get());
     EmbeddingDataType embedding_type = GetType();
     switch (embedding_type) {
+        case kElemInt8: {
+            AbstractHnsw<i8, SegmentOffset> abstract_hnsw(data_, index_hnsw);
+            abstract_hnsw.Save(*file_handler_);
+            break;
+        }
         case kElemFloat: {
             AbstractHnsw<f32, SegmentOffset> abstract_hnsw(data_, index_hnsw);
             abstract_hnsw.Save(*file_handler_);
@@ -143,6 +165,12 @@ void HnswFileWorker::ReadFromFileImpl() {
     const IndexHnsw *index_hnsw = static_cast<const IndexHnsw *>(index_base_.get());
     EmbeddingDataType embedding_type = GetType();
     switch (embedding_type) {
+        case kElemInt8: {
+            AbstractHnsw<i8, SegmentOffset> abstract_hnsw(nullptr, index_hnsw);
+            abstract_hnsw.Load(*file_handler_);
+            data_ = abstract_hnsw.RawPtr();
+            break;
+        }
         case kElemFloat: {
             AbstractHnsw<f32, SegmentOffset> abstract_hnsw(nullptr, index_hnsw);
             abstract_hnsw.Load(*file_handler_);

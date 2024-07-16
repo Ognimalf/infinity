@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <immintrin.h>
 module;
 
-#include <cmath>
 #include "../header.h"
+#include <cmath>
+#include <cstdint>
 
 import stl;
 
@@ -91,9 +93,7 @@ export float F32CosAVX512(const float *pv1, const float *pv2, size_t dim) {
     return mul_res != 0 ? mul_res / sqrt(v1_res * v2_res) : 0;
 }
 
-export float F32CosAVX512Residual(const float *pv1, const float *pv2, size_t dim) {
-    return F32CosAVX512(pv1, pv2, dim);
-}
+export float F32CosAVX512Residual(const float *pv1, const float *pv2, size_t dim) { return F32CosAVX512(pv1, pv2, dim); }
 
 #endif
 
@@ -151,9 +151,7 @@ export float F32CosAVX(const float *pv1, const float *pv2, size_t dim) {
     return mul_res != 0 ? mul_res / sqrt(v1_res * v2_res) : 0;
 }
 
-export float F32CosAVXResidual(const float *pv1, const float *pv2, size_t dim) {
-    return F32CosAVX(pv1, pv2, dim);
-}
+export float F32CosAVXResidual(const float *pv1, const float *pv2, size_t dim) { return F32CosAVX(pv1, pv2, dim); }
 
 #endif
 
@@ -211,7 +209,7 @@ export float F32CosSSE(const float *pv1, const float *pv2, size_t dim) {
     _mm_store_ps(V1TmpRes, norm_v1);
     _mm_store_ps(V2TmpRes, norm_v2);
 
-    float mul_res = MulTmpRes[0] + MulTmpRes[1] + MulTmpRes[2] + MulTmpRes[3]; 
+    float mul_res = MulTmpRes[0] + MulTmpRes[1] + MulTmpRes[2] + MulTmpRes[3];
     float v1_res = V1TmpRes[0] + V1TmpRes[1] + V1TmpRes[2] + V1TmpRes[3];
     float v2_res = V2TmpRes[0] + V2TmpRes[1] + V2TmpRes[2] + V2TmpRes[3];
 
@@ -227,9 +225,7 @@ export float F32CosSSE(const float *pv1, const float *pv2, size_t dim) {
     return mul_res != 0 ? mul_res / sqrt(v1_res * v2_res) : 0;
 }
 
-export float F32CosSSEResidual(const float *pv1, const float *pv2, size_t dim) {
-    return F32CosSSE(pv1, pv2, dim);
-}
+export float F32CosSSEResidual(const float *pv1, const float *pv2, size_t dim) { return F32CosSSE(pv1, pv2, dim); }
 
 #endif
 
@@ -348,6 +344,148 @@ export int32_t I8IPSSE(const int8_t *pv1, const int8_t *pv2, size_t dim) {
 
 export int32_t I8IPSSEResidual(const int8_t *pv1, const int8_t *pv2, size_t dim) {
     return I8IPSSE(pv1, pv2, dim) + I8IPBF(pv1 + (dim & ~15), pv2 + (dim & ~15), dim & 15);
+}
+
+#endif
+
+//------------------------------//------------------------------//------------------------------
+
+export signed char I8L2BF(const int8_t *pv1, const int8_t *pv2, size_t dim) {
+    int32_t res = 0;
+    for (size_t i = 0; i < dim; i++) {
+        int32_t t = pv1[i] - pv2[i];
+        res += t * t;
+    }
+    return (signed char)res;
+}
+
+#if defined(USE_AVX512)
+
+export signed char I8L2AVX512(const int8_t *pv1, const int8_t *pv2, size_t dim) {
+    int8_t PORTABLE_ALIGN64 TmpRes[64];
+    size_t dim16 = dim >> 4;
+
+    const int8_t *pEnd1 = pv1 + (dim16 << 4);
+
+    __m512i diff, v1, v2;
+    __m512i sum = __mm512_set1_ps(0);
+
+    while (pv1 < pEnd1) {
+        v1 = _mm512_loadu_si512(pv1);
+        pv1 += 16;
+        v2 = _mm512_loadu_si512(pv2);
+        pv2 += 16;
+        diff = _mm512_sub_epi8(v1, v2);
+        sum = _mm512_add_epi8(sum, _mm512_mul_epi8(diff, diff));
+    }
+
+    _mm512_store_epi8(TmpRes, sum);
+    int32_t res = 0;
+    for (size_t i = 0; i < 64; i++) {
+        res += TmpRes[i];
+    }
+
+    return (signed char)res;
+}
+
+export signed char I8L2AVX512Residual(const int8_t *pv1, const int8_t *pv2, size_t dim) {
+    return I8L2AVX512(pv1, pv2, dim) + I8L2BF(pv1 + (dim & ~63), pv2 + (dim & ~63), dim & 63);
+}
+#endif
+
+#if defined(USE_AVX)
+
+export signed char I8L2AVX(const int8_t *pv1, const int8_t *pv2, size_t dim) {
+    int8_t PORTABLE_ALIGN32 TmpRes[32];
+    size_t dim16 = dim >> 4;
+
+    const int8_t *pEnd1 = pv1 + (dim16 << 4);
+
+    __m256i diff, v1, v2;
+    __m256i sum = _mm256_set1_epi8(0);
+    __m512i diff16, lo, hi;
+
+    while (pv1 < pEnd1) {
+        v1 = _mm256_loadu_epi8(pv1);
+        pv1 += 8;
+        v2 = _mm256_loadu_epi8(pv2);
+        pv2 += 8;
+        diff = _mm256_sub_epi8(v1, v2);
+        diff16 = _mm512_cvtepi8_epi16(diff);
+        lo = _mm512_extracti64x4_epi64(diff16, 0);
+        hi = _mm512_extracti64x4_epi64(diff16, 1);
+        sum = _mm256_add_epi8(sum, _mm512_mullo_epi16(diff16, diff16));
+
+        v1 = _mm256_loadu_epi8(pv1);
+        pv1 += 8;
+        v2 = _mm256_loadu_epi8(pv2);
+        pv2 += 8;
+        diff = _mm256_sub_epi8(v1, v2);
+        sum = _mm256_add_epi8(sum, _mm256_mul_epi8(diff, diff));
+    }
+
+    _mm256_storeu_epi8(TmpRes, sum);
+    int32_t res = 0;
+    for (size_t i = 0; i < 32; i++) {
+        res += TmpRes[i];
+    }
+    return (signed char)res;
+}
+
+export signed char I8L2AVXResidual(const int8_t *pv1, const int8_t *pv2, size_t dim) {
+    return I8L2AVX(pv1, pv2, dim) + I8L2BF(pv1 + (dim & ~31), pv2 + (dim & ~31), dim & 31);
+}
+
+#endif
+
+#if defined(USE_SSE)
+
+export signed char I8L2SSE(const int8_t *pv1, const int8_t *pv2, size_t dim) {
+    alignas(16) int32_t TmpRes[4];
+    size_t dim16 = dim >> 4;
+
+    const int8_t *pEnd1 = pv1 + (dim16 << 4);
+
+    __m128i diff, v1, v2;
+    __m128i sum = _mm_set1_ps(0);
+
+    while (pv1 < pEnd1) {
+        v1 = _mm_loadu_epi8(pv1);
+        pv1 += 4;
+        v2 = _mm_loadu_epi8(pv2);
+        pv2 += 4;
+        diff = _mm_sub_epi8(v1, v2);
+        sum = _mm_add_epi8(sum, _mm_mul_epi8(diff, diff));
+
+        v1 = _mm_loadu_epi8(pv1);
+        pv1 += 4;
+        v2 = _mm_loadu_epi8(pv2);
+        pv2 += 4;
+        diff = _mm_sub_epi8(v1, v2);
+        sum = _mm_add_epi8(sum, _mm_mul_epi8(diff, diff));
+
+        v1 = _mm_loadu_epi8(pv1);
+        pv1 += 4;
+        v2 = _mm_loadu_epi8(pv2);
+        pv2 += 4;
+        diff = _mm_sub_epi8(v1, v2);
+        sum = _mm_add_epi8(sum, _mm_mul_epi8(diff, diff));
+
+        v1 = _mm_loadu_epi8(pv1);
+        pv1 += 4;
+        v2 = _mm_loadu_epi8(pv2);
+        pv2 += 4;
+        diff = _mm_sub_epi8(v1, v2);
+        sum = _mm_add_epi8(sum, _mm_mul_epi8(diff, diff));
+    }
+
+    _mm_storeu_epi8(TmpRes, sum);
+    int32_t res = TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3];
+    return (signed char)res;
+}
+
+export signed char I8L2SSEResidual(const int8_t *pv1, const int8_t *pv2, size_t dim) {
+    return I8L2SSE(pv1, pv2, dim) + I8L2BF(pv1 + (dim & ~15), pv2 + (dim & ~15), dim & 15);
 }
 
 #endif
