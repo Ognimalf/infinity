@@ -178,7 +178,7 @@ void WalManager::Flush() {
                 this->SwapWalFile(max_commit_ts_);
             }
 
-            for(const SharedPtr<WalCmd>& cmd: entry->cmds_) {
+            for (const SharedPtr<WalCmd> &cmd : entry->cmds_) {
                 LOG_TRACE(fmt::format("WAL CMD: {}", cmd->ToString()));
             }
 
@@ -1048,6 +1048,7 @@ void WalManager::WalCmdDumpIndexReplay(WalCmdDumpIndex &cmd, TransactionID txn_i
         segment_index_entry->AddChunkIndexEntryReplayWal(chunk_info.chunk_id_,
                                                          table_entry,
                                                          chunk_info.base_name_,
+                                                         chunk_info.obj_addrs_,
                                                          chunk_info.base_rowid_,
                                                          chunk_info.row_count_,
                                                          commit_ts,

@@ -14,17 +14,25 @@ import term_meta;
 import dict_reader;
 import local_file_system;
 import third_party;
+import infinity_context;
+import persistence_manager;
 
 namespace infinity {
 
-ColumnIndexIterator::ColumnIndexIterator(const String &index_dir, const String &base_name, optionflag_t flag) {
+ColumnIndexIterator::ColumnIndexIterator(const String &index_dir,
+                                         const String &base_name,
+                                         const ObjAddr &posting_obj_addr,
+                                         const ObjAddr &dict_obj_addr,
+                                         optionflag_t flag) {
     PostingFormatOption format_option(flag);
+    PersistenceManager *pm = InfinityContext::instance().persistence_manager();
+    bool use_object_cache = pm != nullptr;
+
     Path path = Path(index_dir) / base_name;
-    String dict_file = path.string();
-    dict_file.append(DICT_SUFFIX);
+    String dict_file = use_object_cache ? pm->GetObjCache(dict_obj_addr) : path.string().append(DICT_SUFFIX);
     dict_reader_ = MakeShared<DictionaryReader>(dict_file, PostingFormatOption(flag));
-    String posting_file = path.string();
-    posting_file.append(POSTING_SUFFIX);
+
+    String posting_file = use_object_cache ? pm->GetObjCache(posting_obj_addr) : path.string().append(POSTING_SUFFIX);
     posting_file_ = MakeShared<FileReader>(fs_, posting_file, 1024);
 
     doc_list_reader_ = MakeShared<ByteSliceReader>();

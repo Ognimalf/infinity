@@ -29,6 +29,9 @@ import index_base;
 import buffer_handle;
 import default_values;
 import column_def;
+import serialize;
+import create_index_info;
+import persistence_manager;
 
 namespace infinity {
 
@@ -38,6 +41,24 @@ struct BlockEntry;
 class BufferManager;
 class BufferObj;
 struct SegmentEntry;
+
+export struct FullTextObjAddrs {
+    ObjAddr posting_obj_addr_;
+    ObjAddr dict_obj_addr_;
+    ObjAddr column_length_obj_addr_;
+
+    void Save(const ObjAddr &posting_obj_addr, const ObjAddr &dict_obj_addr, const ObjAddr &column_length_obj_addr) {
+        posting_obj_addr_ = posting_obj_addr;
+        dict_obj_addr_ = dict_obj_addr;
+        column_length_obj_addr_ = column_length_obj_addr;
+    }
+
+    void ToVec(Vector<ObjAddr> &obj_addrs) {
+        obj_addrs.push_back(posting_obj_addr_);
+        obj_addrs.push_back(dict_obj_addr_);
+        obj_addrs.push_back(column_length_obj_addr_);
+    }
+};
 
 // ChunkIndexEntry is an immutable chunk of SegmentIndexEntry. MemIndexer(for fulltext) is the mutable chunk of SegmentIndexEntry.
 export class ChunkIndexEntry : public BaseEntry, public EntryInterface {
@@ -59,8 +80,14 @@ public:
                                                                   BufferManager *buffer_mgr,
                                                                   SizeT index_size);
 
-    static SharedPtr<ChunkIndexEntry>
-    NewFtChunkIndexEntry(SegmentIndexEntry *segment_index_entry, const String &base_name, RowID base_rowid, u32 row_count, BufferManager *buffer_mgr);
+    static SharedPtr<ChunkIndexEntry> NewFtChunkIndexEntry(SegmentIndexEntry *segment_index_entry,
+                                                           const String &base_name,
+                                                           const ObjAddr &posting_obj_addr,
+                                                           const ObjAddr &dict_obj_addr,
+                                                           const ObjAddr &column_length_obj_addr,
+                                                           RowID base_rowid,
+                                                           u32 row_count,
+                                                           BufferManager *buffer_mgr);
 
     static SharedPtr<ChunkIndexEntry> NewSecondaryIndexChunkIndexEntry(ChunkID chunk_id,
                                                                        SegmentIndexEntry *segment_index_entry,
@@ -88,6 +115,7 @@ public:
                                                                SegmentIndexEntry *segment_index_entry,
                                                                CreateIndexParam *param,
                                                                const String &base_name,
+                                                               const Vector<ObjAddr> &index_obj_addrs,
                                                                RowID base_rowid,
                                                                u32 row_count,
                                                                TxnTimeStamp commit_ts,
@@ -126,6 +154,8 @@ public:
 
     BufferObj *GetBufferObj() { return buffer_obj_; }
 
+    IndexType GetIndexType();
+
     void DeprecateChunk(TxnTimeStamp commit_ts) {
         assert(commit_ts_.load() < commit_ts);
         deprecate_ts_.store(commit_ts);
@@ -153,6 +183,9 @@ public:
     RowID base_rowid_;
     u32 row_count_;
     Atomic<TxnTimeStamp> deprecate_ts_{UNCOMMIT_TS};
+
+    // Persistence
+    FullTextObjAddrs fulltext_obj_addrs_;
 
 private:
     BufferObj *buffer_obj_{};

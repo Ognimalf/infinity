@@ -18,6 +18,7 @@ module;
 module persistence_manager;
 import stl;
 import uuid;
+import serialize;
 import third_party;
 import infinity_exception;
 
@@ -25,6 +26,32 @@ namespace fs = std::filesystem;
 
 namespace infinity {
 constexpr SizeT BUFFER_SIZE = 1024 * 1024; // 1 MB
+
+nlohmann::json ObjAddr::Serialize() const {
+    nlohmann::json obj;
+    obj["obj_key"] = obj_key_;
+    obj["part_offset"] = part_offset_;
+    obj["part_size"] = part_size_;
+    return obj;
+}
+
+void ObjAddr::Deserialize(const nlohmann::json &obj) {
+    obj_key_ = obj["obj_key"];
+    part_offset_ = obj["part_offset"];
+    part_size_ = obj["part_size"];
+}
+
+void ObjAddr::WriteBuf(char *buf) const {
+    WriteBufAdv<String>(buf, obj_key_);
+    WriteBufAdv<SizeT>(buf, part_offset_);
+    WriteBufAdv<SizeT>(buf, part_size_);
+}
+
+void ObjAddr::ReadBuf(const char *buf) {
+    obj_key_ = ReadBufAdv<String>(buf);
+    part_offset_ = ReadBufAdv<SizeT>(buf);
+    part_size_ = ReadBufAdv<SizeT>(buf);
+}
 
 ObjAddr PersistenceManager::Persist(const String &file_path, bool allow_compose) {
     std::error_code ec;
@@ -154,7 +181,7 @@ ObjAddr PersistenceManager::ObjCreateRefCount(const String &file_path) {
         }
         std::error_code ec;
         fs::create_symlink(src_fp, dst_fp);
-    } catch (const fs::filesystem_error& e) {
+    } catch (const fs::filesystem_error &e) {
         String error_message = fmt::format("Failed to link file {}.", file_path);
         UnrecoverableError(error_message);
     }

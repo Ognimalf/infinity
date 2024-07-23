@@ -40,6 +40,8 @@ import column_def;
 import base_entry;
 import default_values;
 import constant_expr;
+import create_index_info;
+import persistence_manager;
 
 namespace infinity {
 
@@ -90,7 +92,7 @@ export class CatalogDeltaOperation {
 public:
     explicit CatalogDeltaOperation(CatalogDeltaOpType type) : type_(type) {}
     CatalogDeltaOperation(CatalogDeltaOpType type, BaseEntry *base_entry, TxnTimeStamp commit_ts);
-    virtual ~CatalogDeltaOperation(){};
+    virtual ~CatalogDeltaOperation() {};
     CatalogDeltaOpType GetType() const { return type_; }
     virtual String GetTypeStr() const = 0;
     [[nodiscard]] virtual SizeT GetSizeInBytes() const = 0;
@@ -169,7 +171,7 @@ export class AddSegmentEntryOp : public CatalogDeltaOperation {
 public:
     static UniquePtr<AddSegmentEntryOp> ReadAdv(char *&ptr);
 
-    AddSegmentEntryOp() : CatalogDeltaOperation(CatalogDeltaOpType::ADD_SEGMENT_ENTRY){};
+    AddSegmentEntryOp() : CatalogDeltaOperation(CatalogDeltaOpType::ADD_SEGMENT_ENTRY) {};
 
     AddSegmentEntryOp(SegmentEntry *segment_entry, TxnTimeStamp commit_ts, String segment_filter_binary_data = "");
 
@@ -198,7 +200,7 @@ export class AddBlockEntryOp : public CatalogDeltaOperation {
 public:
     static UniquePtr<AddBlockEntryOp> ReadAdv(char *&ptr);
 
-    AddBlockEntryOp() : CatalogDeltaOperation(CatalogDeltaOpType::ADD_BLOCK_ENTRY){};
+    AddBlockEntryOp() : CatalogDeltaOperation(CatalogDeltaOpType::ADD_BLOCK_ENTRY) {};
 
     AddBlockEntryOp(BlockEntry *block_entry, TxnTimeStamp commit_ts, String block_filter_binary_data = "");
 
@@ -230,7 +232,7 @@ export class AddColumnEntryOp : public CatalogDeltaOperation {
 public:
     static UniquePtr<AddColumnEntryOp> ReadAdv(char *&ptr);
 
-    AddColumnEntryOp() : CatalogDeltaOperation(CatalogDeltaOpType::ADD_COLUMN_ENTRY){};
+    AddColumnEntryOp() : CatalogDeltaOperation(CatalogDeltaOpType::ADD_COLUMN_ENTRY) {};
 
     AddColumnEntryOp(BlockColumnEntry *column_entry, TxnTimeStamp commit_ts);
 
@@ -310,6 +312,8 @@ public:
 
 public:
     String base_name_{};
+    IndexType index_type_{IndexType::kInvalid};
+    FullTextObjAddrs fulltext_obj_addrs_{};
     RowID base_rowid_;
     u32 row_count_{0};
     TxnTimeStamp deprecate_ts_{UNCOMMIT_TS};

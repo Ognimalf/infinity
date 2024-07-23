@@ -66,6 +66,8 @@ import emvb_index_in_mem;
 import bmp_util;
 import hnsw_util;
 import wal_entry;
+import infinity_context;
+import persistence_manager;
 
 namespace infinity {
 
@@ -363,8 +365,7 @@ SharedPtr<ChunkIndexEntry> SegmentIndexEntry::MemIndexDump(bool spill) {
             }
             memory_indexer_->Dump(false, spill);
             if (!spill) {
-                chunk_index_entry =
-                    AddFtChunkIndexEntry(memory_indexer_->GetBaseName(), memory_indexer_->GetBaseRowId(), memory_indexer_->GetDocCount());
+                chunk_index_entry = AddFtChunkIndexEntry();
                 this->UpdateFulltextColumnLenInfo(memory_indexer_->GetColumnLengthSum(), memory_indexer_->GetDocCount());
                 memory_indexer_.reset();
             }
@@ -494,8 +495,7 @@ void SegmentIndexEntry::PopulateEntirely(const SegmentEntry *segment_entry, Txn 
                 memory_indexer_->Commit(true);
             }
             memory_indexer_->Dump(true);
-            dumped_memindex_entry =
-                AddFtChunkIndexEntry(memory_indexer_->GetBaseName(), memory_indexer_->GetBaseRowId(), memory_indexer_->GetDocCount());
+            dumped_memindex_entry = AddFtChunkIndexEntry();
             this->UpdateFulltextColumnLenInfo(memory_indexer_->GetColumnLengthSum(), memory_indexer_->GetDocCount());
             memory_indexer_.reset();
             break;
@@ -602,22 +602,10 @@ Status SegmentIndexEntry::CreateIndexPrepare(const SegmentEntry *segment_entry, 
             }
             break;
         }
-        case IndexType::kHnsw: {
-            PopulateEntirely(segment_entry, txn, populate_entire_config);
-            break;
-        }
-        case IndexType::kFullText: {
-            PopulateEntirely(segment_entry, txn, populate_entire_config);
-            break;
-        }
-        case IndexType::kSecondary: {
-            PopulateEntirely(segment_entry, txn, populate_entire_config);
-            break;
-        }
-        case IndexType::kEMVB: {
-            PopulateEntirely(segment_entry, txn, populate_entire_config);
-            break;
-        }
+        case IndexType::kHnsw:
+        case IndexType::kFullText:
+        case IndexType::kSecondary:
+        case IndexType::kEMVB:
         case IndexType::kBMP: {
             PopulateEntirely(segment_entry, txn, populate_entire_config);
             break;
@@ -1023,10 +1011,17 @@ void SegmentIndexEntry::AddChunkIndexEntry(SharedPtr<ChunkIndexEntry> chunk_inde
     chunk_index_entries_.push_back(chunk_index_entry);
 }
 
-SharedPtr<ChunkIndexEntry> SegmentIndexEntry::AddFtChunkIndexEntry(const String &base_name, RowID base_rowid, u32 row_count) {
+SharedPtr<ChunkIndexEntry> SegmentIndexEntry::AddFtChunkIndexEntry() {
     std::shared_lock lock(rw_locker_);
     // row range of chunk_index_entries_ may overlop and misorder due to deprecated ones.
-    SharedPtr<ChunkIndexEntry> chunk_index_entry = ChunkIndexEntry::NewFtChunkIndexEntry(this, base_name, base_rowid, row_count, buffer_manager_);
+    SharedPtr<ChunkIndexEntry> chunk_index_entry = ChunkIndexEntry::NewFtChunkIndexEntry(this,
+                                                                                         memory_indexer_->GetBaseName(),
+                                                                                         memory_indexer_->GetPostingObjAddr(),
+                                                                                         memory_indexer_->GetDictObjAddr(),
+                                                                                         memory_indexer_->GetColumnLengthObjAddr(),
+                                                                                         memory_indexer_->GetBaseRowId(),
+                                                                                         memory_indexer_->GetDocCount(),
+                                                                                         buffer_manager_);
     chunk_index_entries_.push_back(chunk_index_entry);
     return chunk_index_entry;
 }
@@ -1034,12 +1029,14 @@ SharedPtr<ChunkIndexEntry> SegmentIndexEntry::AddFtChunkIndexEntry(const String 
 SharedPtr<ChunkIndexEntry> SegmentIndexEntry::AddChunkIndexEntryReplayWal(ChunkID chunk_id,
                                                                           TableEntry *table_entry,
                                                                           const String &base_name,
+                                                                          const Vector<ObjAddr> &obj_addrs,
                                                                           RowID base_rowid,
                                                                           u32 row_count,
                                                                           TxnTimeStamp commit_ts,
                                                                           TxnTimeStamp deprecate_ts,
                                                                           BufferManager *buffer_mgr) {
-    auto ret = this->AddChunkIndexEntryReplay(chunk_id, table_entry, base_name, base_rowid, row_count, commit_ts, deprecate_ts, buffer_mgr);
+    auto ret =
+        this->AddChunkIndexEntryReplay(chunk_id, table_entry, base_name, obj_addrs, base_rowid, row_count, commit_ts, deprecate_ts, buffer_mgr);
     ++next_chunk_id_;
     return ret;
 }
@@ -1047,6 +1044,7 @@ SharedPtr<ChunkIndexEntry> SegmentIndexEntry::AddChunkIndexEntryReplayWal(ChunkI
 SharedPtr<ChunkIndexEntry> SegmentIndexEntry::AddChunkIndexEntryReplay(ChunkID chunk_id,
                                                                        TableEntry *table_entry,
                                                                        const String &base_name,
+                                                                       const Vector<ObjAddr> &obj_addrs,
                                                                        RowID base_rowid,
                                                                        u32 row_count,
                                                                        TxnTimeStamp commit_ts,
@@ -1056,8 +1054,16 @@ SharedPtr<ChunkIndexEntry> SegmentIndexEntry::AddChunkIndexEntryReplay(ChunkID c
     const auto &column_def = table_entry->GetColumnDefByName(index_base->column_name());
     auto param = SegmentIndexEntry::GetCreateIndexParam(index_base, 0 /*segment row cnt*/, column_def);
 
-    SharedPtr<ChunkIndexEntry> chunk_index_entry =
-        ChunkIndexEntry::NewReplayChunkIndexEntry(chunk_id, this, param.get(), base_name, base_rowid, row_count, commit_ts, deprecate_ts, buffer_mgr);
+    SharedPtr<ChunkIndexEntry> chunk_index_entry = ChunkIndexEntry::NewReplayChunkIndexEntry(chunk_id,
+                                                                                             this,
+                                                                                             param.get(),
+                                                                                             base_name,
+                                                                                             obj_addrs,
+                                                                                             base_rowid,
+                                                                                             row_count,
+                                                                                             commit_ts,
+                                                                                             deprecate_ts,
+                                                                                             buffer_mgr);
     chunk_index_entries_.push_back(chunk_index_entry); // replay not need lock
     if (table_index_entry_->table_index_def()->index_type_ == IndexType::kFullText) {
         u64 column_length_sum = chunk_index_entry->GetColumnLengthSum();
@@ -1130,6 +1136,7 @@ UniquePtr<SegmentIndexEntry> SegmentIndexEntry::Deserialize(const nlohmann::json
 
     segment_index_entry->ft_column_len_sum_ = index_entry_json["ft_column_len_sum"];
     segment_index_entry->ft_column_len_cnt_ = index_entry_json["ft_column_len_cnt"];
+
     return segment_index_entry;
 }
 

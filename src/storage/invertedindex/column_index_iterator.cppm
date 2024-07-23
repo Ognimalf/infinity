@@ -13,11 +13,17 @@ import index_defines;
 import term_meta;
 import dict_reader;
 import local_file_system;
+import persistence_manager;
+
 namespace infinity {
 
 export class ColumnIndexIterator {
 public:
-    ColumnIndexIterator(const String &index_dir, const String &base_name, optionflag_t flag);
+    ColumnIndexIterator(const String &index_dir,
+                        const String &base_name,
+                        const ObjAddr &posting_obj_addr,
+                        const ObjAddr &dict_obj_addr,
+                        optionflag_t flag);
 
     ~ColumnIndexIterator();
 

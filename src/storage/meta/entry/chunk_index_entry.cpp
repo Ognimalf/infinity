@@ -43,6 +43,8 @@ import secondary_index_file_worker;
 import emvb_index_file_worker;
 import bmp_index_file_worker;
 import column_def;
+import infinity_context;
+import persistence_manager;
 
 namespace infinity {
 
@@ -63,7 +65,7 @@ String ChunkIndexEntry::EncodeIndex(const ChunkID chunk_id, const SegmentIndexEn
 
 ChunkIndexEntry::ChunkIndexEntry(ChunkID chunk_id, SegmentIndexEntry *segment_index_entry, const String &base_name, RowID base_rowid, u32 row_count)
     : BaseEntry(EntryType::kChunkIndex, false, segment_index_entry->base_dir_, ChunkIndexEntry::EncodeIndex(chunk_id, segment_index_entry)),
-      chunk_id_(chunk_id), segment_index_entry_(segment_index_entry), base_name_(base_name), base_rowid_(base_rowid), row_count_(row_count){};
+      chunk_id_(chunk_id), segment_index_entry_(segment_index_entry), base_name_(base_name), base_rowid_(base_rowid), row_count_(row_count) {};
 
 String ChunkIndexEntry::IndexFileName(SegmentID segment_id, ChunkID chunk_id) { return fmt::format("seg{}_chunk{}.idx", segment_id, chunk_id); }
 
@@ -91,16 +93,22 @@ SharedPtr<ChunkIndexEntry> ChunkIndexEntry::NewHnswIndexChunkIndexEntry(ChunkID 
 
 SharedPtr<ChunkIndexEntry> ChunkIndexEntry::NewFtChunkIndexEntry(SegmentIndexEntry *segment_index_entry,
                                                                  const String &base_name,
+                                                                 const ObjAddr &posting_obj_addr,
+                                                                 const ObjAddr &dict_obj_addr,
+                                                                 const ObjAddr &column_length_obj_addr,
                                                                  RowID base_rowid,
                                                                  u32 row_count,
                                                                  BufferManager *buffer_mgr) {
     auto chunk_index_entry = SharedPtr<ChunkIndexEntry>(new ChunkIndexEntry(0, segment_index_entry, base_name, base_rowid, row_count));
+    chunk_index_entry->fulltext_obj_addrs_.Save(posting_obj_addr, dict_obj_addr, column_length_obj_addr);
+
     const auto &index_dir = segment_index_entry->index_dir();
     assert(index_dir.get() != nullptr);
     if (buffer_mgr != nullptr) {
         auto column_length_file_name = MakeShared<String>(base_name + LENGTH_SUFFIX);
         SharedPtr<String> full_dir = MakeShared<String>(fmt::format("{}/{}", *chunk_index_entry->base_dir_, *index_dir));
         auto file_worker = MakeUnique<RawFileWorker>(full_dir, column_length_file_name, row_count * sizeof(u32));
+        file_worker->obj_addr_ = column_length_obj_addr;
         chunk_index_entry->buffer_obj_ = buffer_mgr->GetBufferObject(std::move(file_worker));
     }
     return chunk_index_entry;
@@ -182,12 +190,14 @@ SharedPtr<ChunkIndexEntry> ChunkIndexEntry::NewReplayChunkIndexEntry(ChunkID chu
                                                                      SegmentIndexEntry *segment_index_entry,
                                                                      CreateIndexParam *param,
                                                                      const String &base_name,
+                                                                     const Vector<ObjAddr> &index_obj_addrs,
                                                                      RowID base_rowid,
                                                                      u32 row_count,
                                                                      TxnTimeStamp commit_ts,
                                                                      TxnTimeStamp deprecate_ts,
                                                                      BufferManager *buffer_mgr) {
     auto chunk_index_entry = SharedPtr<ChunkIndexEntry>(new ChunkIndexEntry(chunk_id, segment_index_entry, base_name, base_rowid, row_count));
+
     const auto &column_def = segment_index_entry->table_index_entry()->column_def();
     const auto &index_dir = segment_index_entry->index_dir();
     SharedPtr<String> full_dir = MakeShared<String>(fmt::format("{}/{}", *chunk_index_entry->base_dir_, *index_dir));
@@ -201,7 +211,10 @@ SharedPtr<ChunkIndexEntry> ChunkIndexEntry::NewReplayChunkIndexEntry(ChunkID chu
             break;
         }
         case IndexType::kFullText: {
-            auto column_length_file_name = MakeShared<String>(base_name + LENGTH_SUFFIX);
+            assert(index_obj_addrs.size() == 3);
+            chunk_index_entry->fulltext_obj_addrs_.Save(index_obj_addrs[0], index_obj_addrs[1], index_obj_addrs[2]);
+            PersistenceManager *pm = InfinityContext::instance().persistence_manager();
+            auto column_length_file_name = MakeShared<String>(pm->GetObjCache(index_obj_addrs[2]));
             auto file_worker = MakeUnique<RawFileWorker>(full_dir, column_length_file_name, row_count * sizeof(u32));
             chunk_index_entry->buffer_obj_ = buffer_mgr->GetBufferObject(std::move(file_worker));
             break;
@@ -256,6 +269,8 @@ u64 ChunkIndexEntry::GetColumnLengthSum() const {
 
 BufferHandle ChunkIndexEntry::GetIndex() { return buffer_obj_->Load(); }
 
+IndexType ChunkIndexEntry::GetIndexType() { return segment_index_entry_->table_index_entry()->index_base()->index_type_; }
+
 nlohmann::json ChunkIndexEntry::Serialize() {
     nlohmann::json index_entry_json;
     index_entry_json["chunk_id"] = this->chunk_id_;
@@ -264,6 +279,18 @@ nlohmann::json ChunkIndexEntry::Serialize() {
     index_entry_json["row_count"] = this->row_count_;
     index_entry_json["commit_ts"] = this->commit_ts_.load();
     index_entry_json["deprecate_ts"] = this->deprecate_ts_.load();
+
+    IndexType index_type = GetIndexType();
+    switch (index_type) {
+        case IndexType::kFullText: {
+            index_entry_json["obj_addrs"].emplace(this->fulltext_obj_addrs_.posting_obj_addr_.Serialize());
+            index_entry_json["obj_addrs"].emplace(this->fulltext_obj_addrs_.dict_obj_addr_.Serialize());
+            index_entry_json["obj_addrs"].emplace(this->fulltext_obj_addrs_.column_length_obj_addr_.Serialize());
+        }
+        default: {
+            break;
+        }
+    }
     return index_entry_json;
 }
 
@@ -277,7 +304,32 @@ SharedPtr<ChunkIndexEntry> ChunkIndexEntry::Deserialize(const nlohmann::json &in
     u32 row_count = index_entry_json["row_count"];
     TxnTimeStamp commit_ts = index_entry_json["commit_ts"];
     TxnTimeStamp deprecate_ts = index_entry_json["deprecate_ts"];
-    auto ret = NewReplayChunkIndexEntry(chunk_id, segment_index_entry, param, base_name, base_rowid, row_count, commit_ts, deprecate_ts, buffer_mgr);
+
+    // Deserialize obj_addrs
+    Vector<ObjAddr> obj_addrs;
+    switch (param->index_base_->index_type_) {
+        case IndexType::kFullText: {
+            obj_addrs.emplace_back(ObjAddr());
+            obj_addrs.back().Deserialize(index_entry_json["obj_addrs"][0]);
+            obj_addrs.emplace_back(ObjAddr());
+            obj_addrs.back().Deserialize(index_entry_json["obj_addrs"][1]);
+            obj_addrs.emplace_back(ObjAddr());
+            obj_addrs.back().Deserialize(index_entry_json["obj_addrs"][2]);
+        }
+        default: {
+            break;
+        }
+    }
+    auto ret = NewReplayChunkIndexEntry(chunk_id,
+                                        segment_index_entry,
+                                        param,
+                                        base_name,
+                                        obj_addrs,
+                                        base_rowid,
+                                        row_count,
+                                        commit_ts,
+                                        deprecate_ts,
+                                        buffer_mgr);
     return ret;
 }
 

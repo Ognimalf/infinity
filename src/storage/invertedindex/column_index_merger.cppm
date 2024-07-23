@@ -16,6 +16,8 @@ import segment_term_posting;
 import local_file_system;
 import internal_types;
 import vector_with_lock;
+import segment_index_entry;
+import persistence_manager;
 
 namespace infinity {
 export class ColumnIndexMerger {
@@ -23,7 +25,16 @@ public:
     ColumnIndexMerger(const String &index_dir, optionflag_t flag);
     ~ColumnIndexMerger();
 
-    void Merge(const Vector<String> &base_names, const Vector<RowID> &base_rowids, const String &dst_base_name);
+    void Merge(const Vector<String> &base_names,
+               const Vector<RowID> &base_rowids,
+               const String &dst_base_name,
+               const Vector<ObjAddr> &obj_addrs);
+
+public:
+    // Persistence
+    ObjAddr posting_obj_addr_;
+    ObjAddr dict_obj_addr_;
+    ObjAddr column_length_obj_addr_;
 
 private:
     SharedPtr<PostingMerger> CreatePostingMerger();

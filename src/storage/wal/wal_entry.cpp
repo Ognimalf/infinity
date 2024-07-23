@@ -37,6 +37,7 @@ import segment_entry;
 import segment_index_entry;
 import chunk_index_entry;
 import local_file_system;
+import create_index_info;
 
 namespace infinity {
 
@@ -181,7 +182,18 @@ String WalSegmentInfo::ToString() const {
 
 WalChunkIndexInfo::WalChunkIndexInfo(ChunkIndexEntry *chunk_index_entry)
     : chunk_id_(chunk_index_entry->chunk_id_), base_name_(chunk_index_entry->base_name_), base_rowid_(chunk_index_entry->base_rowid_),
-      row_count_(chunk_index_entry->row_count_), deprecate_ts_(chunk_index_entry->deprecate_ts_) {}
+      row_count_(chunk_index_entry->row_count_), deprecate_ts_(chunk_index_entry->deprecate_ts_) {
+    IndexType index_type = chunk_index_entry->GetIndexType();
+    switch (index_type) {
+        case IndexType::kFullText: {
+            chunk_index_entry->fulltext_obj_addrs_.ToVec(obj_addrs_);
+            break;
+        }
+        default: {
+            break;
+        }
+    }
+}
 
 bool WalChunkIndexInfo::operator==(const WalChunkIndexInfo &other) const {
     return chunk_id_ == other.chunk_id_ && base_name_ == other.base_name_ && base_rowid_ == other.base_rowid_ && row_count_ == other.row_count_ &&
@@ -548,7 +560,9 @@ i32 WalCmdUpdateSegmentBloomFilterData::GetSizeInBytes() const {
     return sz;
 }
 
-i32 WalCmdCheckpoint::GetSizeInBytes() const { return sizeof(WalCommandType) + sizeof(i64) + sizeof(i8) + sizeof(i32) + sizeof(i32) + this->catalog_path_.size() + this->catalog_name_.size(); }
+i32 WalCmdCheckpoint::GetSizeInBytes() const {
+    return sizeof(WalCommandType) + sizeof(i64) + sizeof(i8) + sizeof(i32) + sizeof(i32) + this->catalog_path_.size() + this->catalog_name_.size();
+}
 
 i32 WalCmdCompact::GetSizeInBytes() const {
     i32 size = sizeof(WalCommandType) + sizeof(i32) + this->db_name_.size() + sizeof(i32) + this->table_name_.size() + sizeof(i32);
@@ -815,12 +829,12 @@ String WalCmdCompact::ToString() const {
     ss << "db name: " << db_name_ << std::endl;
     ss << "table name: " << table_name_ << std::endl;
     ss << "deprecated segment: ";
-    for(SegmentID segment_id: deprecated_segment_ids_) {
+    for (SegmentID segment_id : deprecated_segment_ids_) {
         ss << segment_id << " | ";
     }
     ss << std::endl;
     ss << "new segment: ";
-    for(auto& new_seg_info: new_segment_infos_) {
+    for (auto &new_seg_info : new_segment_infos_) {
         ss << new_seg_info.ToString() << " | ";
     }
     ss << std::endl;
@@ -833,7 +847,7 @@ String WalCmdOptimize::ToString() const {
     ss << "table name: " << table_name_ << std::endl;
     ss << "index name: " << index_name_ << std::endl;
     ss << "index parameter: ";
-    for(auto& param_ptr: params_) {
+    for (auto &param_ptr : params_) {
         ss << param_ptr->ToString() << " | ";
     }
     return ss.str();
@@ -846,7 +860,7 @@ String WalCmdDumpIndex::ToString() const {
     ss << "index name: " << index_name_ << std::endl;
     ss << "segment id: " << segment_id_ << std::endl;
     ss << "index parameter: ";
-    for(auto& chunk_info: chunk_infos_) {
+    for (auto &chunk_info : chunk_infos_) {
         ss << chunk_info.ToString() << " | ";
     }
     return ss.str();
@@ -988,7 +1002,7 @@ bool WalEntry::IsCheckPoint(Vector<SharedPtr<WalEntry>> replay_entries, WalCmdCh
     return true;
 }
 
-WalCmdCheckpoint* WalEntry::GetCheckPoint() const {
+WalCmdCheckpoint *WalEntry::GetCheckPoint() const {
     auto iter = cmds_.begin();
     while (iter != cmds_.end()) {
         if ((*iter)->GetType() == WalCommandType::CHECKPOINT) {

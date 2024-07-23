@@ -33,6 +33,7 @@ import vector_with_lock;
 import buf_writer;
 import posting_list_format;
 import external_sort_merger;
+import persistence_manager;
 
 namespace infinity {
 
@@ -82,6 +83,12 @@ public:
 
     String GetBaseName() const { return base_name_; }
 
+    ObjAddr GetPostingObjAddr() const { return posting_obj_addr_; }
+
+    ObjAddr GetDictObjAddr() const { return dict_obj_addr_; }
+
+    ObjAddr GetColumnLengthObjAddr() const { return column_length_obj_addr_; }
+
     RowID GetBaseRowId() const { return base_row_id_; }
 
     u32 GetDocCount() const { return doc_count_; }
@@ -115,7 +122,7 @@ private:
 
     u64 ReadU64LE(const u8 *ptr) { return *(u64 *)ptr; }
 
-    void TupleListToIndexFile(UniquePtr<SortMergerTermTuple<TermTuple, u32>>& merger);
+    void TupleListToIndexFile(UniquePtr<SortMergerTermTuple<TermTuple, u32>> &merger);
 
 private:
     String index_dir_;
@@ -152,5 +159,10 @@ private:
     UniquePtr<char_t[]> spill_buffer_{};
     SizeT spill_buffer_size_{0};
     UniquePtr<BufWriter> buf_writer_;
+
+    // used for persistence
+    ObjAddr posting_obj_addr_;
+    ObjAddr dict_obj_addr_;
+    ObjAddr column_length_obj_addr_;
 };
 } // namespace infinity

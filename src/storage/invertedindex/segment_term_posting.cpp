@@ -8,12 +8,18 @@ import index_defines;
 import posting_decoder;
 import term_meta;
 import column_index_iterator;
+import persistence_manager;
 
 namespace infinity {
 
-SegmentTermPosting::SegmentTermPosting(const String &index_dir, const String &base_name, RowID base_row_id, optionflag_t flag)
+SegmentTermPosting::SegmentTermPosting(const String &index_dir,
+                                       const String &base_name,
+                                       const ObjAddr &posting_obj_addr,
+                                       const ObjAddr &dict_obj_addr,
+                                       RowID base_row_id,
+                                       optionflag_t flag)
     : base_row_id_(base_row_id) {
-    column_index_iterator_ = MakeShared<ColumnIndexIterator>(index_dir, base_name, flag);
+    column_index_iterator_ = MakeShared<ColumnIndexIterator>(index_dir, base_name, posting_obj_addr, dict_obj_addr, flag);
 }
 
 bool SegmentTermPosting::HasNext() {
@@ -25,11 +31,15 @@ bool SegmentTermPosting::HasNext() {
 
 SegmentTermPostingQueue::SegmentTermPostingQueue(const String &index_dir,
                                                  const Vector<String> &base_names,
+                                                 const Vector<ObjAddr> &posting_obj_addrs,
+                                                 const Vector<ObjAddr> &dict_obj_addrs,
                                                  const Vector<RowID> &base_rowids,
                                                  optionflag_t flag)
-    : index_dir_(index_dir), base_names_(base_names), base_rowids_(base_rowids) {
+    : index_dir_(index_dir), base_names_(base_names), posting_obj_addrs_(posting_obj_addrs), dict_obj_addrs_(dict_obj_addrs),
+      base_rowids_(base_rowids) {
     for (u32 i = 0; i < base_names.size(); ++i) {
-        SegmentTermPosting *segment_term_posting = new SegmentTermPosting(index_dir, base_names[i], base_rowids[i], flag);
+        SegmentTermPosting *segment_term_posting =
+            new SegmentTermPosting(index_dir, base_names[i], posting_obj_addrs[i], dict_obj_addrs[i], base_rowids[i], flag);
         if (segment_term_posting->HasNext()) {
             segment_term_postings_.push(segment_term_posting);
         } else

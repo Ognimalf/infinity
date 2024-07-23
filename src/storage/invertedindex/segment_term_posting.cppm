@@ -10,6 +10,7 @@ import term_meta;
 import column_index_iterator;
 import index_defines;
 import internal_types;
+import persistence_manager;
 
 namespace infinity {
 // Utility class for posting merging
@@ -17,7 +18,12 @@ export class SegmentTermPosting {
 public:
     SegmentTermPosting();
 
-    SegmentTermPosting(const String &index_dir, const String &base_name, RowID base_row_id, optionflag_t flag);
+    SegmentTermPosting(const String &index_dir,
+                       const String &base_name,
+                       const ObjAddr &posting_obj_addr,
+                       const ObjAddr &dict_obj_addr,
+                       RowID base_row_id,
+                       optionflag_t flag);
 
     RowID GetBaseRowId() const { return base_row_id_; }
 
@@ -44,7 +50,12 @@ public:
 
 export class SegmentTermPostingQueue {
 public:
-    SegmentTermPostingQueue(const String &index_dir, const Vector<String> &base_names, const Vector<RowID> &base_rowids, optionflag_t flag);
+    SegmentTermPostingQueue(const String &index_dir,
+                            const Vector<String> &base_names,
+                            const Vector<ObjAddr> &posting_obj_addrs,
+                            const Vector<ObjAddr> &dict_obj_addrs,
+                            const Vector<RowID> &base_rowids,
+                            optionflag_t flag);
 
     ~SegmentTermPostingQueue();
 
@@ -58,6 +69,8 @@ private:
     using PriorityQueue = Heap<SegmentTermPosting *, SegmentTermPostingComparator>;
     const String &index_dir_;
     const Vector<String> &base_names_;
+    const Vector<ObjAddr> &posting_obj_addrs_;
+    const Vector<ObjAddr> &dict_obj_addrs_;
     const Vector<RowID> &base_rowids_;
 
     PriorityQueue segment_term_postings_;

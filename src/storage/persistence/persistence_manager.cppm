@@ -17,6 +17,7 @@ module;
 export module persistence_manager;
 
 import stl;
+import third_party;
 
 // A view means a logical plan
 namespace infinity {
@@ -25,7 +26,16 @@ export struct ObjAddr {
     String obj_key_{};
     SizeT part_offset_{};
     SizeT part_size_{};
+
     bool Valid() const { return !obj_key_.empty() && part_size_ > 0; }
+
+    nlohmann::json Serialize() const;
+
+    void Deserialize(const nlohmann::json &obj);
+
+    void WriteBuf(char * buf) const;
+
+    void ReadBuf(const char *buf);
 };
 
 export struct ObjStat {
@@ -58,6 +68,7 @@ public:
     void PutObjCache(const ObjAddr &object_addr);
 
     ObjAddr ObjCreateRefCount(const String &file_path);
+
 private:
     String ObjCreate();
 

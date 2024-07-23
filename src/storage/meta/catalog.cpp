@@ -46,6 +46,8 @@ import data_access_state;
 import catalog_delta_entry;
 import file_writer;
 import extra_ddl_info;
+import create_index_info;
+import persistence_manager;
 
 import table_meta;
 import table_index_meta;
@@ -902,6 +904,17 @@ void Catalog::LoadFromEntryDelta(TxnTimeStamp max_commit_ts, BufferManager *buff
                 auto *db_entry = this->GetDatabaseReplay(db_name, txn_id, begin_ts);
                 auto *table_entry = db_entry->GetTableReplay(table_name, txn_id, begin_ts);
 
+                Vector<ObjAddr> obj_addrs;
+                switch (add_chunk_index_entry_op->index_type_) {
+                    case IndexType::kFullText: {
+                        add_chunk_index_entry_op->fulltext_obj_addrs_.ToVec(obj_addrs);
+                        break;
+                    }
+                    default: {
+                        break;
+                    }
+                }
+
                 if (auto iter = table_entry->segment_map_.find(segment_id); iter != table_entry->segment_map_.end()) {
                     auto *table_index_entry = table_entry->GetIndexReplay(index_name, txn_id, begin_ts);
                     auto *segment_entry = iter->second.get();
@@ -915,8 +928,15 @@ void Catalog::LoadFromEntryDelta(TxnTimeStamp max_commit_ts, BufferManager *buff
                         UnrecoverableError(error_message);
                     }
                     auto *segment_index_entry = iter2->second.get();
-                    segment_index_entry
-                        ->AddChunkIndexEntryReplay(chunk_id, table_entry, base_name, base_rowid, row_count, commit_ts, deprecate_ts, buffer_mgr);
+                    segment_index_entry->AddChunkIndexEntryReplay(chunk_id,
+                                                                  table_entry,
+                                                                  base_name,
+                                                                  obj_addrs,
+                                                                  base_rowid,
+                                                                  row_count,
+                                                                  commit_ts,
+                                                                  deprecate_ts,
+                                                                  buffer_mgr);
                 }
                 break;
             }
@@ -1067,9 +1087,7 @@ bool Catalog::SaveDeltaCatalog(TxnTimeStamp max_commit_ts, String &delta_catalog
     return false;
 }
 
-void Catalog::AddDeltaEntry(UniquePtr<CatalogDeltaEntry> delta_entry) {
-    global_catalog_delta_entry_->AddDeltaEntry(std::move(delta_entry));
-}
+void Catalog::AddDeltaEntry(UniquePtr<CatalogDeltaEntry> delta_entry) { global_catalog_delta_entry_->AddDeltaEntry(std::move(delta_entry)); }
 
 void Catalog::ReplayDeltaEntry(UniquePtr<CatalogDeltaEntry> delta_entry) { global_catalog_delta_entry_->ReplayDeltaEntry(std::move(delta_entry)); }
 
@@ -1114,8 +1132,6 @@ void Catalog::StartMemoryIndexCommit() {
 
 SizeT Catalog::GetDeltaLogCount() const { return global_catalog_delta_entry_->OpSize(); }
 
-Vector<CatalogDeltaOpBrief> Catalog::GetDeltaLogBriefs() const {
-    return global_catalog_delta_entry_->GetOperationBriefs();
-}
+Vector<CatalogDeltaOpBrief> Catalog::GetDeltaLogBriefs() const { return global_catalog_delta_entry_->GetOperationBriefs(); }
 
 } // namespace infinity
